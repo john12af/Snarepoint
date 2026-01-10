@@ -663,6 +663,38 @@
         .upload-button:hover {
             background: #f7f9f9;
         }
+
+        /* SIGN OUT BUTTON STYLES */
+        .signout-button {
+            width: 100%;
+            max-width: 300px;
+            padding: 8px 16px;
+            background: transparent;
+            color: #ff4d4f;
+            border: 1px solid #ff4d4f;
+            border-radius: 20px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin: 20px auto 0 auto;
+            display: block;
+        }
+        .signout-button:hover {
+            background: #fff2f0;
+        }
+
+        /* PROFILE ACTION BUTTONS */
+        .profile-action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+        }
     </style> 
   <script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script> 
  </head> 
@@ -757,7 +789,11 @@
      <div class="profile-info-item"> <i class="fas fa-map-marker-alt"></i> <span id="main-p-location">San Francisco, CA</span> </div> 
      <div class="profile-info-item"> <i class="fas fa-link"></i> <span id="main-p-website">johndoe.dev</span> </div> 
      <div class="profile-info-item"> <i class="fas fa-calendar-alt"></i> <span>Joined January 2024</span> </div> 
-    </div> <button class="edit-profile-button" onclick="openEditProfile()">Edit profile</button> 
+    </div> 
+    <div class="profile-action-buttons">
+      <button class="edit-profile-button" onclick="openEditProfile()">Edit profile</button>
+      <button class="signout-button" onclick="signOut()">Sign out</button>
+    </div>
     <div class="profile-stats"> 
      <div class="stat-item"><strong>1,234</strong> <span>Following</span></div> 
      <div class="stat-item"><strong>5,678</strong> <span>Followers</span></div> 
@@ -790,8 +826,74 @@
         let isSignedIn = false;
         let userData = null;
 
+        // Check Chrome Storage API availability
+        const storage = chrome?.storage?.sync || {
+            get: function(keys, callback) {
+                try {
+                    const data = {};
+                    if (Array.isArray(keys)) {
+                        keys.forEach(key => {
+                            const value = localStorage.getItem(key);
+                            if (value !== null) {
+                                try {
+                                    data[key] = JSON.parse(value);
+                                } catch {
+                                    data[key] = value;
+                                }
+                            }
+                        });
+                    } else {
+                        Object.keys(keys).forEach(key => {
+                            const value = localStorage.getItem(key);
+                            if (value !== null) {
+                                try {
+                                    data[key] = JSON.parse(value);
+                                } catch {
+                                    data[key] = value;
+                                }
+                            }
+                        });
+                    }
+                    callback(data);
+                } catch (e) {
+                    console.log("Using localStorage fallback");
+                    callback({});
+                }
+            },
+            set: function(data, callback) {
+                try {
+                    Object.keys(data).forEach(key => {
+                        localStorage.setItem(key, JSON.stringify(data[key]));
+                    });
+                    if (callback) callback();
+                } catch (e) {
+                    console.log("Using localStorage fallback");
+                    if (callback) callback();
+                }
+            },
+            remove: function(key, callback) {
+                try {
+                    localStorage.removeItem(key);
+                    if (callback) callback();
+                } catch (e) {
+                    console.log("Using localStorage fallback");
+                    if (callback) callback();
+                }
+            }
+        };
+
+        // Load saved user data on page load
         window.onload = function () {
-            // Token Client Method (More robust for local testing)
+            // Load saved user data from storage
+            storage.get(['userData', 'isSignedIn'], function(result) {
+                if (result.userData && result.isSignedIn) {
+                    userData = result.userData;
+                    isSignedIn = true;
+                    updateProfileUI();
+                }
+            });
+
+            // Token Client Method
             try {
                 tokenClient = google.accounts.oauth2.initTokenClient({
                     client_id: CLIENT_ID,
@@ -828,6 +930,15 @@
                 };
 
                 isSignedIn = true;
+                
+                // Save to Chrome Storage
+                storage.set({
+                    userData: userData,
+                    isSignedIn: true
+                }, function() {
+                    console.log("User data saved to storage");
+                });
+                
                 updateProfileUI();
                 closeSignIn();
                 alert("Welcome, " + userData.name);
@@ -845,6 +956,34 @@
             document.getElementById('avatar-preview').style.backgroundImage = `url('${userData.picture}')`;
             document.getElementById('edit-name').value = userData.name;
             document.getElementById('edit-username').value = userData.handle;
+        }
+
+        function signOut() {
+            // Clear user data
+            userData = null;
+            isSignedIn = false;
+            
+            // Clear from Chrome Storage
+            storage.remove(['userData', 'isSignedIn'], function() {
+                console.log("User data cleared from storage");
+            });
+            
+            // Reset UI
+            document.getElementById('header-p-btn').style.backgroundImage = "url('https://pbs.twimg.com/profile_images/1536443352228368384/x-XyfcPq.jpg')";
+            document.getElementById('main-p-avatar').style.backgroundImage = "url('https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png')";
+            document.getElementById('main-p-name').textContent = "John Doe";
+            document.getElementById('main-p-handle').textContent = "@johndoe";
+            document.getElementById('main-p-bio').textContent = "Tech enthusiast | Building the future one line of code at a time 🚀";
+            document.getElementById('main-p-location').textContent = "San Francisco, CA";
+            document.getElementById('main-p-website').textContent = "johndoe.dev";
+            document.getElementById('avatar-preview').style.backgroundImage = "url('https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png')";
+            document.getElementById('edit-name').value = "John Doe";
+            document.getElementById('edit-username').value = "@johndoe";
+            
+            // Close profile page
+            closeProfile();
+            
+            alert("Signed out successfully!");
         }
 
         // --- REST OF YOUR ORIGINAL JS ---
@@ -874,12 +1013,33 @@
             }
         }
 
-        function closeProfile() { document.getElementById('profile-page').classList.remove('active'); }
-        function openCreatorProgram() { toggleSidebar(); alert('Creator Program feature coming soon!'); }
-        function openSettings() { toggleSidebar(); alert('Settings feature coming soon!'); }
-        function closeSignIn() { document.getElementById('signin-page').classList.remove('active'); }
-        function openEditProfile() { document.getElementById('profile-page').classList.remove('active'); document.getElementById('edit-profile-page').classList.add('active'); }
-        function closeEditProfile() { document.getElementById('edit-profile-page').classList.remove('active'); document.getElementById('profile-page').classList.add('active'); }
+        function closeProfile() { 
+            document.getElementById('profile-page').classList.remove('active'); 
+        }
+        
+        function openCreatorProgram() { 
+            toggleSidebar(); 
+            alert('Creator Program feature coming soon!'); 
+        }
+        
+        function openSettings() { 
+            toggleSidebar(); 
+            alert('Settings feature coming soon!'); 
+        }
+        
+        function closeSignIn() { 
+            document.getElementById('signin-page').classList.remove('active'); 
+        }
+        
+        function openEditProfile() { 
+            document.getElementById('profile-page').classList.remove('active'); 
+            document.getElementById('edit-profile-page').classList.add('active'); 
+        }
+        
+        function closeEditProfile() { 
+            document.getElementById('edit-profile-page').classList.remove('active'); 
+            document.getElementById('profile-page').classList.add('active'); 
+        }
 
         function saveProfile() {
             const name = document.getElementById('edit-name').value;
@@ -893,6 +1053,18 @@
             document.getElementById('main-p-bio').textContent = bio;
             document.getElementById('main-p-location').textContent = location;
             document.getElementById('main-p-website').textContent = website;
+
+            // Save edited profile to storage if user is signed in
+            if (isSignedIn && userData) {
+                userData.name = name;
+                userData.handle = username;
+                
+                storage.set({
+                    userData: userData
+                }, function() {
+                    console.log("Profile updated in storage");
+                });
+            }
 
             closeEditProfile();
             alert('Profile saved successfully!');
